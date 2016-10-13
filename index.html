@@ -1,0 +1,257 @@
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>Scala presentation</title>
+
+		<meta name="description" content="A framework for easily creating beautiful presentations using HTML">
+		<meta name="author" content="Hakim El Hattab">
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<link rel="stylesheet" href="css/reveal.min.css">
+		<link rel="stylesheet" href="css/theme/night.css" id="theme">
+
+		<!-- For syntax highlighting -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- If the query includes 'print-pdf', use the PDF print sheet -->
+		<script>
+			document.write( '<link rel="stylesheet" href="css/print/' + ( window.location.search.match( /print-pdf/gi ) ? 'pdf' : 'paper' ) + '.css" type="text/css" media="print">' );
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+
+				<section>
+					<h1>HMDA Platform</h1>
+					<h3>Cross compiling for the JVM and JS</h3>
+					<p>
+						<small>Created by <a href="http://twitter.com/jmarinotero">@jmarinotero</a></small>
+					</p>
+				</section>
+
+				<section>
+          <h1>Business Drivers</h1>
+          <ul>
+           <li>Be able to deliver working parsing / validation engine in advance to FIs / Vendors</li>
+           <ul>
+             <li>Critical for testing their output</li>
+             <li>Critical to validate our implementation</li>
+           </ul>
+           <li>Internal testing of validation engine and other products (larft)</li>
+           <li>Tool for FIs to test their files without sending us data</li>
+           <ul>
+            <li>Use case: several offices / branches check their partial files before sending to central office, which performs submission</li>
+           </ul>
+          </ul>
+				</section>				
+
+				<section>
+					<h3>How does it work?</h3>			
+          <img src="img/scala.js-workflow.png"></img>
+				</section>
+
+				<section>
+				  <h2>Cross compiling a Scala project</h2>
+          <h3>Structure:</h3>
+          <p>1. A shared project, with common code (i.e. pure Scala and ported libraries)</p>
+          <p>2. A JVM project, with JVM platform specific dependencies and code</p>
+          <p>3. A JS project, with JS platform specific dependencies and code</p>
+        </section>  
+
+        <section>
+          <h2>Cross compiling a Scala Project</h2>
+          <p>For example:</p>
+          <ul>
+           <li>shared/src/main/scala/demo/DateConverter.scala</li>
+           <li>jvm/src/main/scala/demo/DateUtils.scala</li>
+           <li>js/src/main/scala/demo/DateUtils.scala</li>
+          </ul>
+				</section>
+
+        <section>
+          <h3>Common Code</h3>
+          <h4>shared/src/main/scala/demo/DateConverter.scala</h4>
+          <pre>
+          <code>
+            def checkDate(date: String, dateFormat: String): Boolean = {
+              DateUtils.isDate(date, dateFormat)
+            }
+          </code>
+          </pre>
+         
+          DateUtils.isDate is platform specific, depending on which platform we are running the relevant implementation will be executed. 
+          </section>
+
+          <section>
+          <h3>JVM Code</h3>  
+          <h4>jvm/src/main/scala/demo/DateUtils.scala</h4>
+          <pre>
+          <code>
+            def isDate(date: String, dateFormat: String): Boolean = {
+              try {
+                val format = new SimpleDateFormat(dateFormat)
+                format.setLenient(false)
+                val date = format.parse(date)
+                true
+              } catch {
+                case ex: Exception => false  
+              }
+            }
+          </code>
+          </pre>
+
+        </section>
+
+         <section>
+           <h3>JS Code</h3> 
+          <h4>js/src/main/scala/demo/DateUtils.scala</h4>
+          <pre>
+          <code>
+            def isDate(date: String, dateFormat: String): Boolean = {
+              try {
+                val year = s.substring(0, 4).toInt
+                val month = s.substring(4, 6).toInt - 1
+                val day = s.substring(6, 8).toInt
+                val date = new Date(year, month, day)                
+                true
+              } catch {
+                case ex: Exception => false  
+              }
+            }
+          </code>
+          </pre>
+
+        </section>
+
+        <section>
+          <h3>Project configuration</h3>
+          In <i>project/build.sbt</i>
+          <pre>
+          <code>
+           addSbtPlugin("org.scala-js" % "sbt-scalajs" % "0.6.4")
+          </code>
+          </pre>
+
+          In <i>build.sbt</i>
+          <pre>
+          <code>
+          val library = crossProject.settings(
+           libraryDependencies += "org.scalatest" %%% "scalatest" % "3.0.0"
+          ).jsSettings(
+            // JS-specific settings here
+          ).jvmSettings(
+            // JVM-specific settings here
+          )
+
+          lazy val js = library.js
+
+          lazy val jvm = library.jvm
+          </code>
+          </pre>
+        </section>
+
+
+
+				<section>
+          <h3>Porting the HMDA Platform</h3>
+          <ul>
+            <li><i>Persistence</i> and <i>api</i> projects remain unchanged (100 % backend code)</li>
+            <li><i>Model</i> can be ported, except for Census objects (require file access; large files)</li>
+            <li><i>Parser</i> can be ported 100%. Some tests require platform specific code (dates)</li>
+
+          </ul>
+        </section>
+
+        <section>
+          <h3>Porting the HMDA Platform</h3>
+          <ul>
+
+            <li><i>Validation</i> can be ported for the most part, but:</li>
+            <ul>
+              <li>hmda.validation.rules.ts.syntactical.S028: uses dates </li>
+              <li>hmda.validation.rules.lar.validity.{ V210, 265 }: use dates</li>
+              <li>hmda.validation.dsl.PredicateGeo: depends on CBSATractLookup and CBSAMetroMicroLookup which load a file from disk</li>
+              <li>hmda.validation.rules.lar.quality.Q029: uses PredicateGeo</li>
+              <li>hmda.validation.rules.lar.validity.{ V280, V285, V290, V295, V300 }: use PredicateGeo</li>
+              <li>Some tests (TsQualityEngineSpec, LarQualityEngineSpec, LarValidityEngineSpec) use file access</li>
+              <li>hmda.validation.engine.ts.syntactical.TsSyntacticalEngineSpec: fails with timeouts (problem with Futures?)</li>
+              <li>Quality rules are hard to port as is (use Typesafe Config, a Java library)</li>
+            </ul>  
+          </ul>
+				</section>
+
+				<section>
+				  <h3>Pros</h3>
+					<ul>
+					  <li>Solves use cases that are hard to tackle right now</li>
+						<li>Potentially quicker feedback on parsing / validation implementation</li>
+            <li>Increases utility of the HMDA Platform</li>
+					</ul>
+				</section>
+
+        <section>
+          <h3>Cons</h3>
+          <ul>
+            <li>Refactoring will be required. Some edits (census, macro) won't be cross compiled</li>
+            <li>Increased complexity and maintenance</li>
+            <li>IDE issues with platform specific code (current IntelliJ version)</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>If this port (including publish to gh-pages) doesn't happen fast, it's probably not worth it</h2>
+        </section>
+
+			
+			</div>
+		</div>	
+
+
+<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.min.js"></script>
+
+		<script>
+
+			// Full list of configuration options available here:
+			// https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+
+				theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+				transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+				// Optional libraries used to extend on reveal.js
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+					{ src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+					// { src: 'plugin/search/search.js', async: true, condition: function() { return !!document.body.classList; } }
+					// { src: 'plugin/remotes/remotes.js', async: true, condition: function() { return !!document.body.classList; } }
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
